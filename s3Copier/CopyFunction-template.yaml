@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Parameters:
+  srcBucket:
+    Description: The source bucket
+    Type: String
+  tgtBucket:
+    Description: The target bucket
+    Type: String
+  srcPrefix:
+    Description: The source bucket prefix
+    Type: String
+  tgtPrefix:
+    Description: The target bucket prefix
+    Type: String
+
+Resources:
+  MyFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs10.x
+      InlineCode: |
+        var aws=require('aws-sdk');
+        var S3=new aws.S3();
+        var https = require("https");
+        var url = require("url");
+
+        exports.handler = (evt, ctx, cbk) => {
+            var rscProps = evt.ResourceProperties;
+            if(evt.RequestType == "Delete") {
+                var srcPre = rscProps.srcPrefix ? rscProps.srcPrefix + "/" : "";
+                var tgtPre = rscProps.tgtPrefix ? rscProps.tgtPrefix + "/" : "";
+                var listObjParams = {
+                    Bucket: rscProps.tgtBucket
+                };
+            
+                if(rscProps.tgtPrefix || rscProps.srcPrefix) {
+                    listObjParams.Prefix = tgtPre + srcPre;
+                }
+            
+                lsProc(evt, ctx, cbk, listObjParams, (item) => {
+                    var deleteParam = {
+                        Bucket: rscProps.tgtBucket,
+                        Key: item.Key
+                    };
+                    return S3.deleteObject(deleteParam).promise();
+                });
+            } else if(evt.RequestType == "Create" || evt.RequestType == "Update") {
+                var listObjParams = {
+                    Bucket: rscProps.srcBucket
+                };
+            
+                if(rscProps.srcPrefix) {
+                    listObjParams.Prefix = rscProps.srcPrefix;
+                }
+
+                lsProc(evt, ctx, cbk, listObjParams, (item) => {
+                    var key = rscProps.tgtPrefix ? rscProps.tgtPrefix + item.Key : item.Key;
+            
+                    var copyParam = {
+                        Bucket: rscProps.tgtBucket,
+                        Key: key,
+                        CopySource: encodeURIComponent("/" + rscProps.srcBucket + "/" + item.Key)
+                    };
+                    
+                    return S3.copyObject(copyParam).promise();
+                });
+            } else {
+                sendRes(evt, ctx, "FAILED", "Unsupported evtType:" + evt.RequestType);
+            }
+        }
+
+        function lsProc(evt, ctx, cbk, params, itemProcess) {
+            S3.listObjectsV2(params).promise().then((listObjRes) => {
+                var objProms = [];
+                console.log(JSON.stringify(listObjRes));
+                if(listObjRes.Contents.length > 0) {
+                    listObjRes.Contents.forEach((item) => {
+                        var procProm = itemProcess(item);
+                        procProm.catch((err) => {
+                            console.log("err:" + JSON.stringify(err));
+                            sendRes(evt, ctx, "FAILED", err);
+                        });
+                        objProms.push(procProm);
+                    });
+
+                    var procAllProm = Promise.all(objProms).then((procResults) => {
+                        if(listObjRes.IsTruncated) {
+                            params.ContinuationToken = listObjRes.NextContinuationToken;
+                            lsProc(evt, ctx, cbk, params, itemProcess);
+                        } else {
+                            sendRes(evt, ctx, "SUCCESS", null);
+                        }
+                    }).catch((err)=> {
+                        sendRes(evt, ctx, "FAILED", err);
+                    });
+                }
+            }).catch((err) => {
+                sendRes(evt, ctx, "FAILED", err);
+            });
+        }
+
+        // Send response to the pre-signed S3 URL 
+        function sendRes(evt, ctx, responseStatus, responseData) {
+        
+            var responseBody = JSON.stringify({
+                Status: responseStatus,
+                Reason: "Check Log Stream: " + ctx.logStreamName,
+                PhysicalResourceId: ctx.logStreamName,
+                StackId: evt.StackId,
+                RequestId: evt.RequestId,
+                LogicalResourceId: evt.LogicalResourceId,
+                Data: responseData
+            });
+        
+            var parsedUrl = url.parse(evt.ResponseURL);
+            var options = {
+                hostname: parsedUrl.hostname,
+                port: 443,
+                path: parsedUrl.path,
+                method: "PUT",
+                headers: {
+                    "content-type": "",
+                    "content-length": responseBody.length
+                }
+            };
+        
+            var request = https.request(options, function(response) {
+                console.log("STATUS: " + response.statusCode);
+                console.log("HEADERS: " + JSON.stringify(response.headers));
+                // Tell AWS Lambda that the function execution is done  
+                ctx.done();
+            });
+        
+            request.on("error", function(error) {
+                console.log("sendResponse Error:" + error);
+                // Tell AWS Lambda that the function execution is done  
+                ctx.done();
+            });
+          
+            // write data to request body
+            request.write(responseBody);
+            request.end();
+        }
+      MemorySize: 1024
+      Timeout: 900
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:*
+              Resource: !Sub 'arn:aws:s3:::${tgtBucket}/*'
+            - Effect: Allow
+              Action:
+                - s3:*
+              Resource: !Sub 'arn:aws:s3:::${tgtBucket}'
+            - Effect: Deny
+              Action:
+                - s3:Delete*
+                - s3:Create*
+                - s3:Put*
+                - s3:Replicate*
+                - s3:Restore*
+                - s3:Object*
+                - s3:Update*
+              Resource: !Sub 'arn:aws:s3:::${srcBucket}/*'
+            - Effect: Deny
+              Action:
+                - s3:Delete*
+                - s3:Create*
+                - s3:Put*
+                - s3:Replicate*
+                - s3:Restore*
+                - s3:Object*
+                - s3:Update*
+              Resource: !Sub 'arn:aws:s3:::${srcBucket}'
+            - Effect: Allow
+              Action:
+                - s3:*
+              Resource: !Sub 'arn:aws:s3:::${srcBucket}/*'
+            - Effect: Allow
+              Action:
+                - s3:*
+              Resource: !Sub 'arn:aws:s3:::${srcBucket}'
+  DeployArtifacts:
+    Type: Custom::S3Copier
+    Properties:
+      ServiceToken: !GetAtt MyFunction.Arn
+      srcBucket: !Ref srcBucket
+      tgtBucket: !Ref tgtBucket
+      srcPrefix: !Ref srcPrefix
+      tgtPrefix: !Ref tgtPrefix
