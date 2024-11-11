@@ -1,25 +1,25 @@
 diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/Services/user.service.ts git2/juice-shop/frontend/src/app/Services/user.service.ts
-*** git3/juice-shop/frontend/src/app/Services/user.service.ts   2024-11-10 15:09:18.941418670 -0500
---- git2/juice-shop/frontend/src/app/Services/user.service.ts    2024-11-09 19:45:20.135946921 -0500
+*** git3/juice-shop/frontend/src/app/Services/user.service.ts	2024-11-11 03:45:40.038583571 -0500
+--- git2/juice-shop/frontend/src/app/Services/user.service.ts	2024-11-11 03:42:58.029176454 -0500
 ***************
 *** 5,13 ****
-
+  
   import { environment } from '../../environments/environment'
   import { Injectable } from '@angular/core'
 ! import { HttpClient } from '@angular/common/http'
   import { catchError, map } from 'rxjs/operators'
 ! import { Subject } from 'rxjs'
-
+  
   interface Passwords {
     current?: string
 --- 5,21 ----
-
+  
   import { environment } from '../../environments/environment'
   import { Injectable } from '@angular/core'
 ! import { HttpClient, HttpHeaders } from '@angular/common/http'
   import { catchError, map } from 'rxjs/operators'
 ! import { Subject, from } from 'rxjs'
-!
+! 
 ! declare global {
 !   interface Window {
 !     AwsWafIntegration: {
@@ -27,45 +27,45 @@ diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/Services/user.servic
 !     }
 !   }
 ! }
-
+  
   interface Passwords {
     current?: string
 ***************
 *** 34,49 ****
       return this.http.get(`${this.host}/${id}`).pipe(map((response: any) => response.data), catchError((err) => { throw err }))
     }
-
+  
 !   save (params: any) {
 !     return this.http.post(this.host + '/', params).pipe(
 !       map((response: any) => response.data),
 !       catchError((err) => { throw err })
 !     )
     }
-
+  
 !   login (params: any) {
 !     this.isLoggedIn.next(true)
 !     return this.http.post(this.hostServer + '/rest/user/login', params).pipe(map((response: any) => response.authentication), catchError((err) => { throw err }))
     }
-
+  
     getLoggedInState () {
 --- 42,71 ----
       return this.http.get(`${this.host}/${id}`).pipe(map((response: any) => response.data), catchError((err) => { throw err }))
     }
-
+  
 !   save (params: any, next: (value: any) => void, error: (error: any) => void) {
 !     window.AwsWafIntegration.getToken()
 !     .then((token) => {
 !       const headers = new HttpHeaders({
 !         'x-aws-waf-token': token
 !       });
-!
+! 
 !       this.http.post(this.host + '/', params).pipe(
 !         map((response: any) => response.data),
 !         catchError((err) => { throw err })
 !       ).subscribe(next, error);
 !     });
     }
-
+  
 !   login (params: any, next: (value: any) => void, error: (error: any) => void) {
 !     this.isLoggedIn.next(true);
 !     window.AwsWafIntegration.getToken()
@@ -73,15 +73,15 @@ diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/Services/user.servic
 !       const headers = new HttpHeaders({
 !         'x-aws-waf-token': token
 !       });
-!
+! 
 !       this.http.post(this.hostServer + '/rest/user/login', params, {headers}).pipe(map((response: any) => response.authentication), catchError((err) => { throw err })).subscribe(next, error);
 !     });
     }
-
+  
     getLoggedInState () {
 diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/login/login.component.ts git2/juice-shop/frontend/src/app/login/login.component.ts
-*** git3/juice-shop/frontend/src/app/login/login.component.ts	2024-11-10 15:59:28.901169875 -0500
---- git2/juice-shop/frontend/src/app/login/login.component.ts	2024-11-10 15:36:01.901654172 -0500
+*** git3/juice-shop/frontend/src/app/login/login.component.ts	2024-11-11 03:45:40.048583538 -0500
+--- git2/juice-shop/frontend/src/app/login/login.component.ts	2024-11-11 03:42:58.029176454 -0500
 ***************
 *** 73,79 ****
       this.user = {}
@@ -100,25 +100,25 @@ diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/login/login.componen
         const expires = new Date()
         expires.setHours(expires.getHours() + 8)
 diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/oauth/oauth.component.ts git2/juice-shop/frontend/src/app/oauth/oauth.component.ts
-*** git3/juice-shop/frontend/src/app/oauth/oauth.component.ts	2024-11-10 15:59:28.911169870 -0500
---- git2/juice-shop/frontend/src/app/oauth/oauth.component.ts	2024-11-10 15:35:09.061683494 -0500
+*** git3/juice-shop/frontend/src/app/oauth/oauth.component.ts	2024-11-11 03:45:40.048583538 -0500
+--- git2/juice-shop/frontend/src/app/oauth/oauth.component.ts	2024-11-11 03:42:58.029176454 -0500
 ***************
-*** 17,23 ****
-    constructor (private readonly cookieService: CookieService, private readonly userService: UserService, private readonly router: Router, private readonly route: ActivatedRoute, private readonly ngZone: NgZone) { }
-  
+*** 19,25 ****
     ngOnInit () {
-!     this.userService.oauthLogin(this.parseRedirectUrlParams().access_token).subscribe((profile: any) => {
+      this.userService.oauthLogin(this.parseRedirectUrlParams().access_token).subscribe((profile: any) => {
         const password = btoa(profile.email.split('').reverse().join(''))
-        this.userService.save({ email: profile.email, password, passwordRepeat: password }).subscribe(() => {
+!       this.userService.save({ email: profile.email, password, passwordRepeat: password }).subscribe(() => {
           this.login(profile)
---- 17,23 ----
-    constructor (private readonly cookieService: CookieService, private readonly userService: UserService, private readonly router: Router, private readonly route: ActivatedRoute, private readonly ngZone: NgZone) { }
-  
+        }, () => { this.login(profile) })
+      }, (error) => {
+--- 19,25 ----
     ngOnInit () {
-!     this.userService.oauthLogin(this.parseRedirectUrlParams().access_token, (profile: any) => {
+      this.userService.oauthLogin(this.parseRedirectUrlParams().access_token).subscribe((profile: any) => {
         const password = btoa(profile.email.split('').reverse().join(''))
-        this.userService.save({ email: profile.email, password, passwordRepeat: password }).subscribe(() => {
+!       this.userService.save({ email: profile.email, password, passwordRepeat: password }, () => {
           this.login(profile)
+        }, () => { this.login(profile) })
+      }, (error) => {
 ***************
 *** 29,35 ****
     }
@@ -137,8 +137,8 @@ diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/oauth/oauth.componen
         expires.setHours(expires.getHours() + 8)
         this.cookieService.put('token', authentication.token, { expires })
 diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/register/register.component.ts git2/juice-shop/frontend/src/app/register/register.component.ts
-*** git3/juice-shop/frontend/src/app/register/register.component.ts	2024-11-10 15:59:28.911169870 -0500
---- git2/juice-shop/frontend/src/app/register/register.component.ts	2024-11-10 15:33:37.951723245 -0500
+*** git3/juice-shop/frontend/src/app/register/register.component.ts	2024-11-11 03:45:40.058583505 -0500
+--- git2/juice-shop/frontend/src/app/register/register.component.ts	2024-11-11 03:42:58.029176454 -0500
 ***************
 *** 62,68 ****
         securityAnswer: this.securityAnswerControl.value
@@ -157,8 +157,8 @@ diff -crB '--exclude=.git' git3/juice-shop/frontend/src/app/register/register.co
           UserId: response.id,
           answer: this.securityAnswerControl.value,
 diff -crB '--exclude=.git' git3/juice-shop/frontend/src/index.html git2/juice-shop/frontend/src/index.html
-*** git3/juice-shop/frontend/src/index.html	2024-11-10 15:59:29.091169811 -0500
---- git2/juice-shop/frontend/src/index.html	2024-11-10 15:31:39.471769191 -0500
+*** git3/juice-shop/frontend/src/index.html	2024-11-11 03:45:40.238582914 -0500
+--- git2/juice-shop/frontend/src/index.html	2024-11-11 03:44:20.698856811 -0500
 ***************
 *** 14,19 ****
 --- 14,20 ----
